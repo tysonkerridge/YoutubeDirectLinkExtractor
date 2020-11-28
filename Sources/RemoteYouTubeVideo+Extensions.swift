@@ -9,18 +9,15 @@
 import Foundation
 import AVFoundation
 
-public struct VideoInfo {
-    
-    /** Raw info for each video quality. Elements are sorted by video quality with first being the highest quality. */
-    public let rawInfo: [[String: String]]
+extension RemoteYouTubeVideo {
     
     public var highestQualityPlayableLink: String? {
-        let urls = rawInfo.compactMap { $0["url"] }
+        let urls = streamingData?.formats?.compactMap { $0.url } ?? []
         return firstPlayable(from: urls)
     }
     
     public var lowestQualityPlayableLink: String? {
-        let urls = rawInfo.reversed().compactMap { $0["url"] }
+        let urls = streamingData?.formats?.reversed().compactMap { $0.url } ?? []
         return firstPlayable(from: urls)
     }
     
@@ -37,4 +34,5 @@ public struct VideoInfo {
         
         return nil
     }
+    
 }

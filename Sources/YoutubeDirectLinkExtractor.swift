@@ -26,7 +26,7 @@ public class YoutubeDirectLinkExtractor {
     }
     
     public func extractInfo(for source: ExtractionSource,
-                            success: @escaping (VideoInfo) -> Void,
+                            success: @escaping (RemoteYouTubeVideo) -> Void,
                             failure: @escaping (Swift.Error) -> Void) {
         
         extractRawInfo(for: source) { info, error in
@@ -36,27 +36,27 @@ public class YoutubeDirectLinkExtractor {
                 return
             }
             
-            guard info.count > 0 else {
+            guard let info = info else {
                 failure(Error.unkown)
                 return
             }
             
-            success(VideoInfo(rawInfo: info))
+            success(info)
         }
     }
     
     // MARK: - Internal
     
     func extractRawInfo(for source: ExtractionSource,
-                        completion: @escaping ([[String: String]], Swift.Error?) -> Void) {
+                        completion: @escaping (RemoteYouTubeVideo?, Swift.Error?) -> Void) {
         
         guard let id = source.videoId else {
-            completion([], Error.cantExtractVideoId)
+            completion(nil, Error.cantExtractVideoId)
             return
         }
         
         guard let infoUrl = URL(string: "\(infoBasePrefix)\(id)") else {
-            completion([], Error.cantConstructRequestUrl)
+            completion(nil, Error.cantConstructRequestUrl)
             return
         }
         
@@ -65,42 +65,37 @@ public class YoutubeDirectLinkExtractor {
         r.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         
         session.dataTask(with: r as URLRequest) { data, response, error in
-
+            
             guard let data = data else {
-                completion([], error ?? Error.noDataInResponse)
+                completion(nil, error ?? Error.noDataInResponse)
                 return
             }
             
             guard let dataString = String(data: data, encoding: .utf8) else {
-                completion([], Error.cantConvertDataToString)
+                completion(nil, Error.cantConvertDataToString)
                 return
             }
             
-            let extractionResult = self.extractInfo(from: dataString)
-            completion(extractionResult.0, extractionResult.1)
+            let pairs = dataString.queryComponents()
+            
+            guard
+                let playerResponse = pairs["player_response"],
+                !playerResponse.isEmpty,
+                let playerResponseData = playerResponse.data(using: .utf8)
+            else {
+                let error = YoutubeError(errorDescription: pairs["reason"])
+                completion(nil, error ?? Error.cantExtractURLFromYoutubeResponse)
+                return
+            }
+            
+            do {
+                let info = try JSONDecoder().decode(RemoteYouTubeVideo.self, from: playerResponseData)
+                completion(info, nil)
+            } catch {
+                completion(nil, error)
+            }
             
         }.resume()
-    }
-    
-    func extractInfo(from string: String) -> ([[String: String]], Swift.Error?) {
-        let pairs = string.queryComponents()
         
-        guard let playerResponse = pairs["player_response"], !playerResponse.isEmpty else {
-            let error = YoutubeError(errorDescription: pairs["reason"])
-            return ([], error ?? Error.cantExtractURLFromYoutubeResponse)
-        }
-        
-        guard let playerResponseData = playerResponse.data(using: .utf8),
-        let playerResponseJSON = (try? JSONSerialization.jsonObject(with: playerResponseData, options: [])) as? [String: Any],
-        let streamingData = playerResponseJSON["streamingData"] as? [String: Any],
-        let formats = streamingData["formats"] as? [[String: Any]] else {
-            return ([], Error.cantExtractURLFromYoutubeResponse)
-        }
-        
-        let arrayUrls: [[String: String]] = formats
-        .compactMap { $0["url"] as? String }
-        .map { ["url": $0] }
-
-        return (arrayUrls, nil)
     }
 }
