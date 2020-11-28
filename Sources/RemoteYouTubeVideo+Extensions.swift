@@ -12,12 +12,20 @@ import AVFoundation
 extension RemoteYouTubeVideo {
     
     public var highestQualityPlayableLink: String? {
-        let urls = streamingData?.formats?.compactMap { $0.url } ?? []
+        let urls = streamingData?.formats?.compactMap { format in
+            format.url.flatMap { url in
+                format.bitrate.map { (url, $0) }
+            }
+        }.sorted(by: { $0.1 > $1.1 }).map { $0.0 } ?? []
         return firstPlayable(from: urls)
     }
     
     public var lowestQualityPlayableLink: String? {
-        let urls = streamingData?.formats?.reversed().compactMap { $0.url } ?? []
+        let urls = streamingData?.formats?.compactMap { format in
+            format.url.flatMap { url in
+                format.bitrate.map { (url, $0) }
+            }
+        }.sorted(by: { $0.1 < $1.1 }).map { $0.0 } ?? []
         return firstPlayable(from: urls)
     }
     
